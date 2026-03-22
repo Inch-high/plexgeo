@@ -1,0 +1,18 @@
+services:
+  plexgeo:
+    build: .
+    container_name: plexgeo
+    restart: unless-stopped
+    ports:
+      - "${PORT:-7842}:7842"
+    environment:
+      - PLEX_URL=${PLEX_URL}
+      - PLEX_TOKEN=${PLEX_TOKEN}
+      - POLL_INTERVAL=${POLL_INTERVAL:-30}
+      - OUTLIER_THRESHOLD=${OUTLIER_THRESHOLD:-0.10}
+      - OUTLIER_MIN_SESSIONS=${OUTLIER_MIN_SESSIONS:-5}
+    volumes:
+      - plexgeo_data:/data
+
+volumes:
+  plexgeo_data:
