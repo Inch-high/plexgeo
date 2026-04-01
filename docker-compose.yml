@@ -14,8 +14,6 @@ services:
       - OUTLIER_MIN_SESSIONS=${OUTLIER_MIN_SESSIONS:-5}
       # Generate with: openssl rand -base64 32
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      # Optional: set to require authentication on the dashboard
-      - API_KEY=${API_KEY:-}
     volumes:
       - plexgeo_data:/data
 
