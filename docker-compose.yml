@@ -1,5 +1,6 @@
 services:
   plexgeo:
+    image: ghcr.io/inch-high/plexgeo:latest
     build: .
     container_name: plexgeo
     restart: unless-stopped
@@ -11,6 +12,8 @@ services:
       - POLL_INTERVAL=${POLL_INTERVAL:-30}
       - OUTLIER_THRESHOLD=${OUTLIER_THRESHOLD:-0.10}
       - OUTLIER_MIN_SESSIONS=${OUTLIER_MIN_SESSIONS:-5}
+      # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     volumes:
       - plexgeo_data:/data
 
