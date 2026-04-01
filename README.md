@@ -2,6 +2,8 @@
 
 Self-hosted Docker app that monitors your Plex server, logs every user stream by IP and country, graphs trends over time, and raises **anomaly alerts** when a user streams from an unusual location (e.g. normally UK, now AUS).
 
+> **Disclaimer:** This application is vibe coded and has not been audited for security. Do not expose it to the internet — it is intended for local network use only.
+
 ## Features
 
 - **Live world map** — choropleth + glowing dots for active streams
