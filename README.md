@@ -112,6 +112,12 @@ Available for `linux/amd64` and `linux/arm64`.
 
 ---
 
+## Troubleshooting
+
+**Streams not showing up?** If your Plex server uses a self-signed certificate (common on LAN setups with HTTPS), PlexGeo won't be able to connect by default. Go to **Settings** (top-right) and set **SSL Verification** to **Disabled**, then save.
+
+---
+
 ## Outlier Detection Logic
 
 For each new session:
