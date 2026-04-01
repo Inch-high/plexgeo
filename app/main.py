@@ -1,13 +1,14 @@
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
-from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import database
 from app import config as cfg
@@ -21,10 +22,34 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
+API_KEY = os.environ.get("API_KEY", "").strip()
+
+
+# ── Auth middleware ───────────────────────────────────────────────────────────
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Require Bearer token on /api/* routes when API_KEY is set."""
+    async def dispatch(self, request: Request, call_next):
+        if API_KEY and request.url.path.startswith("/api/"):
+            # /health is exempt for Docker healthcheck
+            if request.url.path != "/health":
+                auth = request.headers.get("authorization", "")
+                if not auth.startswith("Bearer ") or not secrets.compare_digest(auth[7:], API_KEY):
+                    return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
+# ── Security headers middleware ──────────────────────────────────────────────
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        return response
+
 
 def _poll_interval() -> int:
-    import asyncio
-    # Sync wrapper — APScheduler calls this synchronously so we read env as fallback
     return int(os.environ.get("POLL_INTERVAL", "30"))
 
 
@@ -45,6 +70,11 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     logger.info(f"Plex poller started (every {interval}s)")
 
+    if API_KEY:
+        logger.info("API_KEY is set — authentication enabled")
+    else:
+        logger.warning("API_KEY not set — dashboard is open to anyone on the network")
+
     await poll_sessions()
 
     yield
@@ -52,7 +82,9 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 
-app = FastAPI(title="PlexGeo", lifespan=lifespan)
+app = FastAPI(title="PlexGeo", lifespan=lifespan, docs_url=None, redoc_url=None)
+app.add_middleware(AuthMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -71,7 +103,7 @@ async def get_stats():
 
 
 @app.get("/api/sessions")
-async def get_sessions(limit: int = 100, offset: int = 0):
+async def get_sessions(limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)):
     return await database.api_get_sessions(limit, offset)
 
 
@@ -116,6 +148,49 @@ class SettingsUpdate(BaseModel):
     poll_interval:        str | None = None
     outlier_threshold:    str | None = None
     outlier_min_sessions: str | None = None
+
+    @field_validator("plex_url")
+    @classmethod
+    def validate_plex_url(cls, v):
+        if v is not None and v != "" and not v.startswith(("http://", "https://")):
+            raise ValueError("Must start with http:// or https://")
+        return v
+
+    @field_validator("poll_interval")
+    @classmethod
+    def validate_poll_interval(cls, v):
+        if v is not None:
+            try:
+                n = int(v)
+            except ValueError:
+                raise ValueError("Must be a number")
+            if n < 5 or n > 3600:
+                raise ValueError("Must be between 5 and 3600")
+        return v
+
+    @field_validator("outlier_threshold")
+    @classmethod
+    def validate_outlier_threshold(cls, v):
+        if v is not None:
+            try:
+                n = float(v)
+            except ValueError:
+                raise ValueError("Must be a number")
+            if n < 0.01 or n > 1.0:
+                raise ValueError("Must be between 0.01 and 1.0")
+        return v
+
+    @field_validator("outlier_min_sessions")
+    @classmethod
+    def validate_outlier_min_sessions(cls, v):
+        if v is not None:
+            try:
+                n = int(v)
+            except ValueError:
+                raise ValueError("Must be a number")
+            if n < 1 or n > 1000:
+                raise ValueError("Must be between 1 and 1000")
+        return v
 
 
 @app.post("/api/settings")
@@ -177,7 +252,8 @@ async def test_connection():
     except Unauthorized:
         return {"ok": False, "message": "Authentication failed — check your Plex Token"}
     except Exception as e:
-        return {"ok": False, "message": f"Connection failed: {e}"}
+        logger.error(f"Plex connection test failed: {e}")
+        return {"ok": False, "message": "Connection failed — check your Plex URL and network"}
 
 
 @app.get("/health")

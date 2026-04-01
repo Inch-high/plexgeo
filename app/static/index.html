@@ -878,6 +878,17 @@
 <!-- Tooltip -->
 <div class="tooltip" id="tooltip"></div>
 
+<!-- Auth overlay -->
+<div id="auth-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:32px;max-width:360px;width:90%;text-align:center;">
+    <div style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--bright);">PlexGeo</div>
+    <div style="color:var(--muted);margin-bottom:20px;font-size:13px;">Enter your API key to continue</div>
+    <input id="auth-input" type="password" placeholder="API Key" style="width:100%;padding:10px 12px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-family:inherit;font-size:14px;box-sizing:border-box;margin-bottom:12px;">
+    <div id="auth-error" style="color:#e50914;font-size:12px;margin-bottom:12px;display:none;">Invalid API key</div>
+    <button onclick="submitAuth()" style="width:100%;padding:10px;border-radius:4px;border:none;background:#e50914;color:#fff;font-family:inherit;font-size:14px;cursor:pointer;font-weight:600;">Login</button>
+  </div>
+</div>
+
 <script>
 // ── Theme toggle ─────────────────────────────────────────────────────────────
 function toggleTheme() {
@@ -902,6 +913,12 @@ function toggleTheme() {
 // ── Utility ─────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const fmt = n => Number(n).toLocaleString();
+function esc(s) {
+  if (!s && s !== 0) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
 
 function countryFlag(code) {
   if (!code || code.length !== 2 || code === 'XX' || code === 'LO') return '🌐';
@@ -945,9 +962,37 @@ let state = {
   worldCountries: null
 };
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+function getApiKey() { return sessionStorage.getItem('plexgeo-api-key') || ''; }
+
+function showAuthOverlay() {
+  const overlay = $('auth-overlay');
+  overlay.style.display = 'flex';
+  $('auth-input').focus();
+  $('auth-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+}
+
+async function submitAuth() {
+  const key = $('auth-input').value.trim();
+  if (!key) return;
+  sessionStorage.setItem('plexgeo-api-key', key);
+  const r = await fetch('/api/stats', { headers: { 'Authorization': 'Bearer ' + key } });
+  if (r.status === 401) {
+    $('auth-error').style.display = 'block';
+    sessionStorage.removeItem('plexgeo-api-key');
+    return;
+  }
+  $('auth-overlay').style.display = 'none';
+  refresh();
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
-async function api(path) {
-  const r = await fetch(path);
+async function api(path, opts = {}) {
+  const key = getApiKey();
+  const headers = { ...(opts.headers || {}) };
+  if (key) headers['Authorization'] = 'Bearer ' + key;
+  const r = await fetch(path, { ...opts, headers });
+  if (r.status === 401) { showAuthOverlay(); throw new Error('Unauthorized'); }
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
@@ -985,10 +1030,10 @@ function renderAlerts() {
   }
   el.innerHTML = state.alerts.slice(0, 20).map(a => `
     <div class="alert-item" data-id="${a.id}">
-      <button class="ack-btn" onclick="ackAlert(${a.id}, event)">ACK</button>
-      <div class="alert-user">${a.username}</div>
+      <button class="ack-btn" onclick="ackAlert(${parseInt(a.id)}, event)">ACK</button>
+      <div class="alert-user">${esc(a.username)}</div>
       <div class="alert-detail">
-        ${countryFlag(a.country_code)} <em>${a.country_name}</em> — usual: ${countryFlag(a.usual_country)} ${a.usual_country}
+        ${countryFlag(a.country_code)} <em>${esc(a.country_name)}</em> — usual: ${countryFlag(a.usual_country)} ${esc(a.usual_country)}
       </div>
       <div class="alert-time">${timeAgo(a.created_at)}</div>
     </div>
@@ -997,7 +1042,10 @@ function renderAlerts() {
 
 async function ackAlert(id, e) {
   e.stopPropagation();
-  await fetch(`/api/alerts/${id}/acknowledge`, { method: 'POST' });
+  const key = getApiKey();
+  const headers = {};
+  if (key) headers['Authorization'] = 'Bearer ' + key;
+  await fetch(`/api/alerts/${id}/acknowledge`, { method: 'POST', headers });
   await refresh();
 }
 
@@ -1010,10 +1058,10 @@ function renderUsers() {
   }
   el.innerHTML = state.users.map(u => `
     <div class="user-item ${state.selectedUser === u.username ? 'active' : ''}"
-         onclick="selectUser('${u.username}')">
-      <div class="user-avatar">${u.username[0].toUpperCase()}</div>
+         onclick="selectUser(${JSON.stringify(u.username)})">
+      <div class="user-avatar">${esc(u.username[0]).toUpperCase()}</div>
       <div>
-        <div class="user-name">${u.username}</div>
+        <div class="user-name">${esc(u.username)}</div>
         <div class="user-meta">${u.total_sessions} sessions · ${u.country_count} countries</div>
       </div>
       ${u.currently_active ? '<div class="stream-badge">LIVE</div>' : ''}
@@ -1199,7 +1247,7 @@ async function renderMap() {
       tooltip.style.display = 'block';
       tooltip.style.left = (event.clientX + 12) + 'px';
       tooltip.style.top = (event.clientY - 10) + 'px';
-      tooltip.textContent = `▶ ${d.username} — ${d.city || d.country_name} · ${d.media_title}`;
+      tooltip.textContent = `\u25b6 ${d.username} \u2014 ${d.city || d.country_name} \u00b7 ${d.media_title}`;
     })
     .on('mouseleave', () => { tooltip.style.display = 'none'; })
     .on('click', function(event, d) {
@@ -1222,28 +1270,28 @@ function showDotPopup(session) {
     <div class="dot-popup-row">
       <span class="dot-popup-label">User</span>
       <span class="dot-popup-val">
-        <a class="user-link" onclick="closeDotPopup();selectUser('${session.username}')">${session.username}</a>
+        <a class="user-link" onclick="closeDotPopup();selectUser(${JSON.stringify(session.username)})">${esc(session.username)}</a>
       </span>
     </div>
     <div class="dot-popup-row">
       <span class="dot-popup-label">Location</span>
-      <span class="dot-popup-val">${countryFlag(session.country_code)} ${session.city ? session.city + ', ' : ''}${session.country_name}</span>
+      <span class="dot-popup-val">${countryFlag(session.country_code)} ${session.city ? esc(session.city) + ', ' : ''}${esc(session.country_name)}</span>
     </div>
     <div class="dot-popup-row">
       <span class="dot-popup-label">IP Address</span>
-      <span class="dot-popup-val" style="color:var(--muted)">${session.ip_address}</span>
+      <span class="dot-popup-val" style="color:var(--muted)">${esc(session.ip_address)}</span>
     </div>
     <div class="dot-popup-row">
       <span class="dot-popup-label">Now Playing</span>
-      <span class="dot-popup-val" style="color:var(--bright)">${session.media_title || '—'}</span>
+      <span class="dot-popup-val" style="color:var(--bright)">${esc(session.media_title) || '—'}</span>
     </div>
     <div class="dot-popup-row">
       <span class="dot-popup-label">Type</span>
-      <span class="dot-popup-val">${session.media_type || '—'}</span>
+      <span class="dot-popup-val">${esc(session.media_type) || '—'}</span>
     </div>
     <div class="dot-popup-row">
       <span class="dot-popup-label">Platform</span>
-      <span class="dot-popup-val">${session.player_platform || '—'}</span>
+      <span class="dot-popup-val">${esc(session.player_platform) || '—'}</span>
     </div>
     <div class="dot-popup-row">
       <span class="dot-popup-label">Started</span>
@@ -1272,7 +1320,7 @@ function renderCountryBars() {
   el.innerHTML = top.map(d => `
     <div class="country-bar-row">
       <div class="country-bar-flag">${countryFlag(d.code)}</div>
-      <div class="country-bar-name">${d.name}</div>
+      <div class="country-bar-name">${esc(d.name)}</div>
       <div class="country-bar-track"><div class="country-bar-fill" style="width:${Math.round((d.count/max)*100)}%"></div></div>
       <div class="country-bar-count">${fmt(d.count)}</div>
     </div>
@@ -1288,11 +1336,11 @@ function renderActiveSessions() {
     <div class="country-bar-row" style="flex-wrap:wrap;gap:6px;">
       <div class="country-bar-flag">${countryFlag(s.country_code)}</div>
       <div style="color:var(--bright);font-size:11px;flex:1;">
-        <a class="user-link" onclick="selectUser('${s.username}')">${s.username}</a>
-        <span style="color:var(--muted)"> · ${s.country_name}</span>
+        <a class="user-link" onclick="selectUser(${JSON.stringify(s.username)})">${esc(s.username)}</a>
+        <span style="color:var(--muted)"> · ${esc(s.country_name)}</span>
       </div>
       <div style="color:var(--muted);font-size:10px;width:100%;padding-left:30px;">
-        ${s.media_title || '—'} · ${s.player_platform || '—'}
+        ${esc(s.media_title) || '—'} · ${esc(s.player_platform) || '—'}
       </div>
     </div>
   `).join('');
@@ -1309,16 +1357,16 @@ function renderSessions() {
   tbody.innerHTML = state.sessions.map(s => `
     <tr>
       <td><span class="badge ${s.is_active ? 'badge-active' : 'badge-ended'}">${s.is_active ? '● LIVE' : 'ended'}</span></td>
-      <td><a class="user-link" onclick="selectUser('${s.username}')">${s.username}</a></td>
+      <td><a class="user-link" onclick="selectUser(${JSON.stringify(s.username)})">${esc(s.username)}</a></td>
       <td class="flag-cell">
         ${s.country_code === 'LO'
           ? '<span class="badge badge-local">LOCAL</span>'
-          : `${countryFlag(s.country_code)} <span style="color:var(--bright)">${s.country_name}</span>`}
-        ${s.city ? `<div style="color:var(--muted);font-size:10px;">${s.city}</div>` : ''}
+          : `${countryFlag(s.country_code)} <span style="color:var(--bright)">${esc(s.country_name)}</span>`}
+        ${s.city ? `<div style="color:var(--muted);font-size:10px;">${esc(s.city)}</div>` : ''}
       </td>
-      <td class="ip-text">${s.ip_address}</td>
-      <td class="media-text">${s.media_title || '—'}<div style="color:var(--muted);font-size:10px;">${s.media_type || ''}</div></td>
-      <td style="color:var(--muted)">${s.player_platform || '—'}</td>
+      <td class="ip-text">${esc(s.ip_address)}</td>
+      <td class="media-text">${esc(s.media_title) || '—'}<div style="color:var(--muted);font-size:10px;">${esc(s.media_type) || ''}</div></td>
+      <td style="color:var(--muted)">${esc(s.player_platform) || '—'}</td>
       <td style="color:var(--muted)">${shortDate(s.started_at)}</td>
       <td style="color:var(--muted)">${timeAgo(s.last_seen)}</td>
     </tr>
@@ -1352,9 +1400,9 @@ async function selectUser(username) {
 
   el.innerHTML = `
     <div class="user-detail-header">
-      <div class="user-detail-avatar">${username[0].toUpperCase()}</div>
+      <div class="user-detail-avatar">${esc(username[0]).toUpperCase()}</div>
       <div>
-        <div class="user-detail-name">${username}</div>
+        <div class="user-detail-name">${esc(username)}</div>
         <div class="user-detail-stats">
           <div class="user-detail-stat">Sessions: <span>${fmt(user?.total_sessions || 0)}</span></div>
           <div class="user-detail-stat">Countries: <span>${fmt(user?.country_count || 0)}</span></div>
@@ -1375,7 +1423,7 @@ async function selectUser(username) {
           ${countries.map(c => `
             <div class="country-bar-row">
               <div class="country-bar-flag">${countryFlag(c.code)}</div>
-              <div class="country-bar-name">${c.name}</div>
+              <div class="country-bar-name">${esc(c.name)}</div>
               <div class="country-bar-track">
                 <div class="country-bar-fill" style="width:${Math.round((c.count/countries[0].count)*100)}%"></div>
               </div>
@@ -1401,10 +1449,10 @@ async function selectUser(username) {
           <tbody>
             ${history.sessions.map(s => `
               <tr>
-                <td>${countryFlag(s.country_code)} ${s.country_name}${s.city ? `<div class="ip-text">${s.city}</div>` : ''}</td>
-                <td class="ip-text">${s.ip_address}</td>
-                <td class="media-text">${s.media_title || '—'}</td>
-                <td style="color:var(--muted)">${s.player_platform || '—'}</td>
+                <td>${countryFlag(s.country_code)} ${esc(s.country_name)}${s.city ? `<div class="ip-text">${esc(s.city)}</div>` : ''}</td>
+                <td class="ip-text">${esc(s.ip_address)}</td>
+                <td class="media-text">${esc(s.media_title) || '—'}</td>
+                <td style="color:var(--muted)">${esc(s.player_platform) || '—'}</td>
                 <td style="color:var(--muted)">${shortDate(s.started_at)}</td>
               </tr>
             `).join('') || '<tr><td colspan="5"><div class="empty">No sessions</div></td></tr>'}
@@ -1510,9 +1558,12 @@ async function saveSettings() {
   if (token) payload.plex_token = token;
 
   try {
+    const hdrs = { 'Content-Type': 'application/json' };
+    const key = getApiKey();
+    if (key) hdrs['Authorization'] = 'Bearer ' + key;
     const res = await fetch('/api/settings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: hdrs,
       body: JSON.stringify(payload),
     });
     const data = await res.json();
@@ -1541,7 +1592,10 @@ async function testConnection() {
   result.className = '';
 
   try {
-    const res = await fetch('/api/settings/test', { method: 'POST' });
+    const thdrs = {};
+    const tkey = getApiKey();
+    if (tkey) thdrs['Authorization'] = 'Bearer ' + tkey;
+    const res = await fetch('/api/settings/test', { method: 'POST', headers: thdrs });
     const data = await res.json();
     result.textContent = data.message;
     result.className   = data.ok ? 'test-ok' : 'test-err';
