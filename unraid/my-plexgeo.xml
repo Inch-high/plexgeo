@@ -20,7 +20,6 @@
   <Config Name="Plex URL" Target="PLEX_URL" Default="" Type="Variable" Display="always" Required="true" Description="URL of your Plex server, e.g. http://192.168.1.50:32400"></Config>
   <Config Name="Plex Token" Target="PLEX_TOKEN" Default="" Type="Variable" Display="password" Required="true" Description="Your Plex authentication token (X-Plex-Token)"></Config>
   <Config Name="Encryption Key" Target="ENCRYPTION_KEY" Default="" Type="Variable" Display="password" Required="true" Description="Encryption key for sensitive settings. Generate with: openssl rand -base64 32"></Config>
-  <Config Name="API Key" Target="API_KEY" Default="" Type="Variable" Display="password" Required="false" Description="Optional. If set, the dashboard requires this key to access."></Config>
   <Config Name="Poll Interval" Target="POLL_INTERVAL" Default="30" Type="Variable" Display="always" Description="Seconds between Plex polls">30</Config>
   <Config Name="Outlier Threshold" Target="OUTLIER_THRESHOLD" Default="0.10" Type="Variable" Display="always" Description="A country must account for less than this fraction of sessions to be flagged">0.10</Config>
   <Config Name="Outlier Min Sessions" Target="OUTLIER_MIN_SESSIONS" Default="5" Type="Variable" Display="always" Description="Minimum sessions before outlier detection kicks in">5</Config>

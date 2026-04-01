@@ -44,7 +44,6 @@ docker run -d \
   -e PLEX_URL=http://your-plex-ip:32400 \
   -e PLEX_TOKEN=your-plex-token \
   -e ENCRYPTION_KEY=your-generated-key \
-  -e API_KEY=your-secret-key \
   ghcr.io/inch-high/plexgeo:latest
 ```
 
@@ -71,11 +70,9 @@ docker compose up -d
 | `POLL_INTERVAL` | `30` | Seconds between Plex polls |
 | `OUTLIER_THRESHOLD` | `0.10` | A country must account for <10% of sessions to be flagged |
 | `OUTLIER_MIN_SESSIONS` | `5` | Minimum sessions before outlier detection kicks in |
-| `API_KEY` | — | Optional. If set, the dashboard requires this key to access |
-
 > If `ENCRYPTION_KEY` is not set, a temporary key is generated in memory. Encrypted settings (e.g. your Plex token stored via the UI) will be lost on container restart.
 
-> If `API_KEY` is set, all API endpoints require an `Authorization: Bearer <key>` header. The dashboard will prompt for the key on first load.
+> You can set a **dashboard password** in Settings to protect the UI. The password is stored encrypted in the database.
 
 ---
 
@@ -110,8 +107,8 @@ Available for `linux/amd64` and `linux/arm64`.
    - `PLEX_URL` = your Plex server URL
    - `PLEX_TOKEN` = your Plex token
    - `ENCRYPTION_KEY` = your generated key
-   - `API_KEY` = a secret password for dashboard access (optional)
 6. Click **Apply**
+7. Set a dashboard password in **Settings** after first login (optional)
 
 ---
 

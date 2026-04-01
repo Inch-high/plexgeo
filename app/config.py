@@ -27,6 +27,7 @@ SETTINGS_SCHEMA: dict[str, tuple[str, bool, str | None]] = {
     "poll_interval":        ("30",    False, "POLL_INTERVAL"),
     "outlier_threshold":    ("0.10",  False, "OUTLIER_THRESHOLD"),
     "outlier_min_sessions": ("5",     False, "OUTLIER_MIN_SESSIONS"),
+    "dashboard_password":   ("",      True,  None),
 }
 
 

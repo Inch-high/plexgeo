@@ -22,19 +22,21 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
 
-API_KEY = os.environ.get("API_KEY", "").strip()
+# Paths that never require auth
+AUTH_EXEMPT = {"/health", "/api/auth/check", "/api/auth/login"}
 
 
 # ── Auth middleware ───────────────────────────────────────────────────────────
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Require Bearer token on /api/* routes when API_KEY is set."""
+    """Require password on /api/* routes when dashboard_password is set."""
     async def dispatch(self, request: Request, call_next):
-        if API_KEY and request.url.path.startswith("/api/"):
-            # /health is exempt for Docker healthcheck
-            if request.url.path != "/health":
+        if request.url.path.startswith("/api/") and request.url.path not in AUTH_EXEMPT:
+            password = await cfg.get("dashboard_password")
+            if password:
                 auth = request.headers.get("authorization", "")
-                if not auth.startswith("Bearer ") or not secrets.compare_digest(auth[7:], API_KEY):
+                token = auth[7:] if auth.startswith("Bearer ") else ""
+                if not token or not secrets.compare_digest(token, password):
                     return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         return await call_next(request)
 
@@ -70,10 +72,11 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     logger.info(f"Plex poller started (every {interval}s)")
 
-    if API_KEY:
-        logger.info("API_KEY is set — authentication enabled")
+    password = await cfg.get("dashboard_password")
+    if password:
+        logger.info("Dashboard password is set — authentication enabled")
     else:
-        logger.warning("API_KEY not set — dashboard is open to anyone on the network")
+        logger.warning("No dashboard password set — dashboard is open to anyone on the network")
 
     await poll_sessions()
 
@@ -93,6 +96,30 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 @app.get("/", include_in_schema=False)
 async def root():
     return FileResponse(os.path.join(static_dir, "index.html"))
+
+
+# ── Auth API ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/auth/check")
+async def auth_check():
+    """Check whether auth is required (no auth needed to call this)."""
+    password = await cfg.get("dashboard_password")
+    return {"auth_required": bool(password)}
+
+
+class LoginBody(BaseModel):
+    password: str
+
+
+@app.post("/api/auth/login")
+async def auth_login(body: LoginBody):
+    """Verify password (no auth needed to call this)."""
+    stored = await cfg.get("dashboard_password")
+    if not stored:
+        return {"ok": True}
+    if secrets.compare_digest(body.password, stored):
+        return {"ok": True}
+    return JSONResponse({"ok": False, "message": "Incorrect password"}, status_code=401)
 
 
 # ── Data API ─────────────────────────────────────────────────────────────────
@@ -148,6 +175,7 @@ class SettingsUpdate(BaseModel):
     poll_interval:        str | None = None
     outlier_threshold:    str | None = None
     outlier_min_sessions: str | None = None
+    dashboard_password:   str | None = None
 
     @field_validator("plex_url")
     @classmethod

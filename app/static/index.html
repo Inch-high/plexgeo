@@ -863,6 +863,20 @@
           </div>
         </div>
 
+        <div class="settings-section">
+          <div class="settings-section-title">Security</div>
+          <div class="settings-section-body">
+            <div class="field-group">
+              <label class="field-label">Dashboard Password</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input class="field-input" id="s-dashboard-password" type="password" placeholder="Leave blank to disable" autocomplete="new-password"/>
+                <button class="toggle-btn" onclick="toggleSecret('s-dashboard-password', this)">show</button>
+              </div>
+              <div class="field-hint">Set a password to protect the dashboard. Leave empty to allow open access.</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Save -->
         <div style="display:flex;align-items:center;gap:12px;">
           <button class="save-btn" id="save-btn" onclick="saveSettings()">Save Settings</button>
@@ -882,7 +896,7 @@
 <div id="auth-overlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;">
   <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:32px;max-width:360px;width:90%;text-align:center;">
     <div style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--bright);">PlexGeo</div>
-    <div style="color:var(--muted);margin-bottom:20px;font-size:13px;">Enter your API key to continue</div>
+    <div style="color:var(--muted);margin-bottom:20px;font-size:13px;">Enter your password to continue</div>
     <input id="auth-input" type="password" placeholder="API Key" style="width:100%;padding:10px 12px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-family:inherit;font-size:14px;box-sizing:border-box;margin-bottom:12px;">
     <div id="auth-error" style="color:#e50914;font-size:12px;margin-bottom:12px;display:none;">Invalid API key</div>
     <button onclick="submitAuth()" style="width:100%;padding:10px;border-radius:4px;border:none;background:#e50914;color:#fff;font-family:inherit;font-size:14px;cursor:pointer;font-weight:600;">Login</button>
@@ -963,7 +977,7 @@ let state = {
 };
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-function getApiKey() { return sessionStorage.getItem('plexgeo-api-key') || ''; }
+function getPassword() { return sessionStorage.getItem('plexgeo-password') || ''; }
 
 function showAuthOverlay() {
   const overlay = $('auth-overlay');
@@ -972,25 +986,36 @@ function showAuthOverlay() {
   $('auth-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
 }
 
+async function checkAuth() {
+  try {
+    const r = await fetch('/api/auth/check');
+    const data = await r.json();
+    if (data.auth_required && !getPassword()) showAuthOverlay();
+  } catch {}
+}
+
 async function submitAuth() {
-  const key = $('auth-input').value.trim();
-  if (!key) return;
-  sessionStorage.setItem('plexgeo-api-key', key);
-  const r = await fetch('/api/stats', { headers: { 'Authorization': 'Bearer ' + key } });
+  const pw = $('auth-input').value.trim();
+  if (!pw) return;
+  const r = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pw }),
+  });
   if (r.status === 401) {
     $('auth-error').style.display = 'block';
-    sessionStorage.removeItem('plexgeo-api-key');
     return;
   }
+  sessionStorage.setItem('plexgeo-password', pw);
   $('auth-overlay').style.display = 'none';
   refresh();
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
-  const key = getApiKey();
+  const pw = getPassword();
   const headers = { ...(opts.headers || {}) };
-  if (key) headers['Authorization'] = 'Bearer ' + key;
+  if (pw) headers['Authorization'] = 'Bearer ' + pw;
   const r = await fetch(path, { ...opts, headers });
   if (r.status === 401) { showAuthOverlay(); throw new Error('Unauthorized'); }
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1042,7 +1067,7 @@ function renderAlerts() {
 
 async function ackAlert(id, e) {
   e.stopPropagation();
-  const key = getApiKey();
+  const key = getPassword();
   const headers = {};
   if (key) headers['Authorization'] = 'Bearer ' + key;
   await fetch(`/api/alerts/${id}/acknowledge`, { method: 'POST', headers });
@@ -1533,6 +1558,9 @@ async function loadSettings() {
     $('s-poll-interval').value      = s.poll_interval || '30';
     $('s-outlier-threshold').value  = s.outlier_threshold || '0.10';
     $('s-outlier-min-sessions').value = s.outlier_min_sessions || '5';
+    // Password: show placeholder if set, blank if not
+    $('s-dashboard-password').placeholder = s.dashboard_password ? 'Password set — enter new value to change' : 'Leave blank to disable';
+    $('s-dashboard-password').value = '';
   } catch(e) {
     console.error('Failed to load settings', e);
   }
@@ -1553,13 +1581,17 @@ async function saveSettings() {
     outlier_min_sessions: $('s-outlier-min-sessions').value,
   };
 
+  // Only include password if user typed something
+  const newPw = $('s-dashboard-password').value;
+  if (newPw !== '') payload.dashboard_password = newPw;
+
   // Only include token if user actually typed something
   const token = $('s-plex-token').value.trim();
   if (token) payload.plex_token = token;
 
   try {
     const hdrs = { 'Content-Type': 'application/json' };
-    const key = getApiKey();
+    const key = getPassword();
     if (key) hdrs['Authorization'] = 'Bearer ' + key;
     const res = await fetch('/api/settings', {
       method: 'POST',
@@ -1571,6 +1603,14 @@ async function saveSettings() {
     result.className   = data.ok ? 'save-ok' : 'save-err';
     if (data.ok) {
       $('s-plex-token').value = '';
+      // Update session auth if password was changed
+      if (payload.dashboard_password !== undefined) {
+        if (payload.dashboard_password) {
+          sessionStorage.setItem('plexgeo-password', payload.dashboard_password);
+        } else {
+          sessionStorage.removeItem('plexgeo-password');
+        }
+      }
       await loadSettings();
     }
   } catch(e) {
@@ -1593,7 +1633,7 @@ async function testConnection() {
 
   try {
     const thdrs = {};
-    const tkey = getApiKey();
+    const tkey = getPassword();
     if (tkey) thdrs['Authorization'] = 'Bearer ' + tkey;
     const res = await fetch('/api/settings/test', { method: 'POST', headers: thdrs });
     const data = await res.json();
@@ -1637,6 +1677,7 @@ function renderAll() {
 const savedTheme = localStorage.getItem('plexgeo-theme') || 'dark';
 $('theme-btn').textContent = savedTheme === 'dark' ? '☀ Light' : '☾ Dark';
 
+checkAuth();
 refresh();
 setInterval(refresh, 30000);
 </script>
