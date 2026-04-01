@@ -12,7 +12,7 @@ services:
       - POLL_INTERVAL=${POLL_INTERVAL:-30}
       - OUTLIER_THRESHOLD=${OUTLIER_THRESHOLD:-0.10}
       - OUTLIER_MIN_SESSIONS=${OUTLIER_MIN_SESSIONS:-5}
-      # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      # Generate with: openssl rand -base64 32
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     volumes:
       - plexgeo_data:/data

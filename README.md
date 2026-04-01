@@ -28,7 +28,7 @@ Or follow: https://support.plex.tv/articles/204059436-finding-an-authentication-
 ### 2. Generate an encryption key
 
 ```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+openssl rand -base64 32
 ```
 
 Save the output — you'll need it for the `ENCRYPTION_KEY` variable below.
@@ -65,7 +65,7 @@ docker compose up -d
 |---|---|---|
 | `PLEX_URL` | — | URL of your Plex server, e.g. `http://192.168.1.50:32400` |
 | `PLEX_TOKEN` | — | Your Plex authentication token |
-| `ENCRYPTION_KEY` | — | Fernet key for encrypting sensitive settings at rest (see above) |
+| `ENCRYPTION_KEY` | — | Key for encrypting sensitive settings at rest (see above) |
 | `PORT` | `7842` | Host port for the dashboard |
 | `POLL_INTERVAL` | `30` | Seconds between Plex polls |
 | `OUTLIER_THRESHOLD` | `0.10` | A country must account for <10% of sessions to be flagged |
