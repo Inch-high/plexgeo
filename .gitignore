@@ -4,3 +4,9 @@
 dist/
 .wrangler/
 *.log
+
+# Runtime data — never commit
+secret.key
+*.db
+__pycache__/
+venv/
