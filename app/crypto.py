@@ -6,6 +6,8 @@ If not set, a transient key is generated in memory (will not survive restarts,
 meaning encrypted settings will become unreadable after a container restart).
 """
 import os
+import base64
+import hashlib
 import logging
 from cryptography.fernet import Fernet
 
@@ -21,14 +23,15 @@ def _get_key() -> bytes:
 
     env_key = os.environ.get("ENCRYPTION_KEY", "").strip()
     if env_key:
-        _key = env_key.encode()
+        # Derive a valid 32-byte Fernet key from any input string (e.g. openssl rand -base64 32)
+        raw = hashlib.sha256(env_key.encode()).digest()
+        _key = base64.urlsafe_b64encode(raw)
     else:
         _key = Fernet.generate_key()
         logger.warning(
             "ENCRYPTION_KEY not set — using an ephemeral key. "
             "Encrypted settings will be LOST on restart. "
-            "Generate a permanent key with: "
-            'python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+            "Generate a permanent key with: openssl rand -base64 32"
         )
     return _key
 
