@@ -89,6 +89,15 @@ Available for `linux/amd64` and `linux/arm64`.
 
 ## Unraid
 
+### Using the template (recommended)
+
+1. Copy `unraid/my-plexgeo.xml` to `/boot/config/plugins/dockerMan/templates-user/` on your Unraid server
+2. In the Docker tab, click **Add Container** and select **plexgeo** from the template dropdown
+3. Fill in your Plex URL, token, and encryption key — sensitive fields are masked
+4. Click **Apply**
+
+### Manual setup
+
 1. In the Unraid Docker tab, click **Add Container**
 2. Set **Repository** to `ghcr.io/inch-high/plexgeo:latest`
 3. Add a **Port** mapping: host `7842` → container `7842`
@@ -96,7 +105,7 @@ Available for `linux/amd64` and `linux/arm64`.
 5. Add **Variables**:
    - `PLEX_URL` = your Plex server URL
    - `PLEX_TOKEN` = your Plex token
-   - `ENCRYPTION_KEY` = your generated Fernet key
+   - `ENCRYPTION_KEY` = your generated key
 6. Click **Apply**
 
 ---
