@@ -31,22 +31,31 @@ Or follow: https://support.plex.tv/articles/204059436-finding-an-authentication-
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Save the output — you'll need it for the `ENCRYPTION_KEY` variable.
+Save the output — you'll need it for the `ENCRYPTION_KEY` variable below.
 
-### 3. Configure
+### 3. Run
+
+```bash
+docker run -d \
+  --name plexgeo \
+  --restart unless-stopped \
+  -p 7842:7842 \
+  -v plexgeo_data:/data \
+  -e PLEX_URL=http://your-plex-ip:32400 \
+  -e PLEX_TOKEN=your-plex-token \
+  -e ENCRYPTION_KEY=your-generated-key \
+  ghcr.io/inch-high/plexgeo:latest
+```
+
+Dashboard will be at **http://localhost:7842**
+
+Alternatively, using Docker Compose:
 
 ```bash
 cp .env.example .env
 # Edit .env with your PLEX_URL, PLEX_TOKEN, and ENCRYPTION_KEY
-```
-
-### 4. Run
-
-```bash
 docker compose up -d
 ```
-
-Dashboard will be at **http://localhost:7842**
 
 ---
 
